@@ -11,6 +11,15 @@
 //! from coverage in `surface.rs`) rather than removed or reused, so the wire
 //! codes of every existing client stay valid forever.
 //!
+//! Token-side failures are always translated into one of the `*TransferFailed`
+//! variants below. A token contract's own error numbers live in the same
+//! `Error(Contract, #N)` namespace as this enum's codes, so letting a raw
+//! token failure surface would let — say — a token's `#5` masquerade as
+//! [`StreamError::StreamNotActive`] in clients. The contract therefore invokes
+//! every token transfer through the SDK's fallible (`try_`) client and maps
+//! any failure to a distinct StreamPay code; the original token error is
+//! intentionally not propagated.
+//!
 //! [`StreamError::ALL`] mirrors the variant set for the generated error-surface
 //! coverage test. The exhaustive match in
 //! `error_surface_test::stream_error_variant_list_is_exhaustive` fails to

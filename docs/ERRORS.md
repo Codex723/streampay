@@ -32,10 +32,10 @@ Every expected failure is a `StreamError` with a stable numeric code. This docum
 
 | Branch | Entrypoint(s) | Error | Code | Condition | Reachability |
 | --- | --- | --- | ---: | --- | --- |
-| `CreateDepositNonPositive` | `create_stream` | `ZeroAmount` | 9 | deposit_amount is zero or negative | reachable |
-| `CreateStartTimeInPast` | `create_stream` | `StartTimeInPast` | 6 | start_time is before the current ledger timestamp | reachable |
-| `CreateInvalidTimeRange` | `create_stream` | `InvalidTimeRange` | 7 | end_time is not strictly after start_time (zero or negative duration) | reachable |
-| `CreateDurationTooLong` | `create_stream` | `DurationTooLong` | 8 | duration exceeds MAX_DURATION_SECONDS (100 years) | reachable |
+| `CreateDepositNonPositive` | `create_stream`, `create_streams` | `ZeroAmount` | 9 | deposit_amount is zero or negative | reachable |
+| `CreateStartTimeInPast` | `create_stream`, `create_streams` | `StartTimeInPast` | 6 | start_time is before the current ledger timestamp | reachable |
+| `CreateInvalidTimeRange` | `create_stream`, `create_streams` | `InvalidTimeRange` | 7 | end_time is not strictly after start_time (zero or negative duration) | reachable |
+| `CreateDurationTooLong` | `create_stream`, `create_streams` | `DurationTooLong` | 8 | duration exceeds MAX_DURATION_SECONDS (100 years) | reachable |
 | `WithdrawAmountNonPositive` | `withdraw` | `ZeroAmount` | 9 | withdraw amount is zero or negative | reachable |
 | `WithdrawAmountExceedsAvailable` | `withdraw` | `AmountExceedsAvailable` | 10 | amount exceeds the accrued-but-unwithdrawn balance | reachable |
 | `WithdrawMaxNothingToWithdraw` | `withdraw_max` | `NothingToWithdraw` | 13 | nothing has accrued yet, or everything accrued was already withdrawn | reachable |
@@ -60,6 +60,19 @@ Every expected failure is a `StreamError` with a stable numeric code. This docum
 | `AcceptGovernorNotNominee` | `accept_governor` | `NotGovernor` | 15 | the caller is not the nominated governor | reachable |
 | `WithdrawTreasuryAmountNonPositive` | `withdraw_treasury` | `ZeroAmount` | 9 | treasury withdrawal amount is zero or negative | reachable |
 | `WithdrawTreasuryExceedsBalance` | `withdraw_treasury` | `InsufficientTreasuryBalance` | 17 | amount exceeds fees collected minus fees already withdrawn | reachable |
+| `IntentNotFound` | `get_intent`, `execute_scheduled`, `cancel_scheduled`, `reclaim_expired` | `IntentNotFound` | 18 | no scheduled intent is stored under the id | reachable |
+| `IntentNotPending` | `execute_scheduled`, `cancel_scheduled`, `reclaim_expired` | `IntentNotPending` | 19 | the intent is already executed, cancelled, or expired | reachable |
+| `IntentNotYetExecutable` | `execute_scheduled` | `IntentNotYetExecutable` | 20 | the next occurrence has not reached execute_after | reachable |
+| `IntentExpired` | `execute_scheduled` | `IntentExpired` | 21 | the intent has reached expires_at | reachable |
+| `IntentNotCancellable` | `cancel_scheduled` | `IntentNotCancellable` | 22 | the execution window opened before cancellation | reachable |
+| `ScheduleInvalidParameters` | `schedule_stream` | `InvalidScheduleParameters` | 23 | schedule parameters are inconsistent or out of bounds | reachable |
+| `IntentParamsMismatch` | `execute_scheduled` | `IntentParamsMismatch` | 24 | stored parameters do not match the authorization commitment | reachable |
+| `IntentNotExpired` | `reclaim_expired` | `IntentNotExpired` | 25 | the intent has not reached expires_at | reachable |
+| `CreateDepositTransferFailed` | `create_stream`, `create_streams` | `DepositTransferFailed` | 26 | the token refuses the deposit (+fee) pull (allowance, balance, or a non-compliant token) | reachable |
+| `TopUpTransferFailed` | `top_up` | `TopUpTransferFailed` | 27 | the token refuses the pull of the added funds | reachable |
+| `RecipientPayoutFailed` | `withdraw`, `withdraw_max`, `cancel_stream` | `RecipientPayoutFailed` | 28 | the token refuses a payout to the recipient | reachable |
+| `SenderRefundFailed` | `cancel_stream` | `SenderRefundFailed` | 29 | the token refuses the refund to the sender | reachable |
+| `TreasuryPayoutFailed` | `withdraw_treasury` | `TreasuryPayoutFailed` | 30 | the token refuses the payout of collected protocol fees | reachable |
 
 ## Retired codes
 
