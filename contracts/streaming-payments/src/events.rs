@@ -278,3 +278,23 @@ pub struct StorageMigrated {
     pub end_id: u64,
     pub is_complete: bool,
 }
+
+/// Emitted when the sender pauses an active stream; accrual freezes at this
+/// ledger timestamp (`last_paused_at`).
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PauseStream {
+    #[topic]
+    pub stream_id: u64,
+    pub sender: Address,
+}
+
+/// Emitted when the sender resumes a paused stream; `paused_total` grows and
+/// `end_time` shifts forward by exactly the paused interval.
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResumeStream {
+    #[topic]
+    pub stream_id: u64,
+    pub sender: Address,
+}
