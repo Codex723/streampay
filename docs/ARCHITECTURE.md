@@ -11,18 +11,19 @@ reentrancy, TTL strategy, and the design decisions behind the v1 API. Read the
 │                        StreamingPayments                           │
 │                                                                    │
 │  lib.rs      entrypoints: create_stream / withdraw / withdraw_max / │
-│              cancel_stream / top_up / get_stream / available /      │
-│              recipient_streams / sender_streams / set_fee_bps /    │
-│              nominate_governor / accept_governor / withdraw_treasury│
-│              treasury_status / stream_fee / verify_treasury /       │
-│              total_streams                                         │
+│              cancel_stream / top_up / pause_stream / resume_stream /│
+│              get_stream / available / recipient_streams /           │
+│              sender_streams / set_fee_bps / nominate_governor /     │
+│              accept_governor / withdraw_treasury / treasury_status /│
+│              stream_fee / verify_treasury / total_streams           │
 │  stream.rs   Stream type, storage, checked accrual math            │
 │  treasury.rs protocol-fee math, per-token accounting, governor,    │
 │              verification scan (see §11)                           │
 │  errors.rs   StreamError — stable numeric codes, append-only       │
 │  events.rs   StreamCreated / Withdrawn / StreamCancelled /         │
-│              StreamToppedUp (stream_id as topic), FeeCharged       │
-│              (stream_id as topic), FeeWithdrawn (token as topic)   │
+│              StreamToppedUp / PauseStream / ResumeStream           │
+│              (stream_id as topic), FeeCharged (stream_id as topic), │
+│              FeeWithdrawn (token as topic)                         │
 └──────────────────────────┬─────────────────────────────────────────┘
                            │ token interface (SAC-compatible)
                            ▼
@@ -103,6 +104,13 @@ Safety properties:
 The window is **half-open** `[start_time, end_time)`: at `now == start_time`
 nothing has accrued, at `now ≥ end_time` the full duration has elapsed.
 
+For pausable streams, accrual math stays pure:
+`elapsed = now − start_time − paused_total`.
+While paused, accrual is frozen at the pause-time value (`last_paused_at`).
+On resume, the effective `end_time` and `paused_total` shift forward by the paused
+interval (`now − last_paused_at`), preserving the initial rate and ensuring
+the recipient resumes accrual exactly where it left off.
+
 ## 4. Auth model
 
 | Action | who may call | auth consumed |
@@ -111,6 +119,8 @@ nothing has accrued, at `now ≥ end_time` the full duration has elapsed.
 | `withdraw` | recipient only | recipient |
 | `cancel_stream` | sender always; recipient iff `cancelable` | caller |
 | `top_up` | sender only | sender |
+| `pause_stream` | sender only | sender |
+| `resume_stream` | sender only | sender |
 
 The `cancelable` flag is chosen per stream at creation: payroll senders often
 want sender-only cancellation, while vesting recipients may want the right to
@@ -156,16 +166,31 @@ is never part of any stream's `deposit`, so no payout path can reach it.
                  │
                  ▼
               Active ──── cancel_stream ────▶ Cancelled (terminal)
-                 │        (pro-rata split:
-                 │         recipient ← available,
-                 │         sender ← deposit − streamed)
+                 │  ▲     (pro-rata split:
+   pause_stream  │  │      recipient ← available,
+                 ▼  │      sender ← deposit − streamed)
+               Paused
+                 │  resume_stream
+                 ├─ cancel_stream ──────────▶ Cancelled (terminal)
                  │
-                 ├─ withdrawn == deposit ──▶ Depleted (terminal)
+                 ├─ withdrawn == deposit ───▶ Depleted (terminal)
                  │
-                 └─ top_up allowed while Active (even after end_time:
+                 └─ top_up allowed while Active or Paused (even after end_time:
                     funds become fully accrued → recipient withdraws)
 ```
 
+- Pausing an Active stream transitions it to `Paused`. Accrual freezes at the
+  pause-time available balance; recipient withdrawals against the frozen balance
+  and sender top-ups remain permitted.
+- Resuming a `Paused` stream transitions it back to `Active`. Total duration
+  stretches by the exact paused duration (`end_time` shifts forward,
+  `paused_total` accumulates the paused interval).
+- Cancelling a `Paused` stream settles the frozen accrued balance to the
+  recipient and refunds the remaining unaccrued deposit to the sender.
+- Calling `pause_stream` on an already-paused stream reverts
+  (`StreamAlreadyPaused`). Calling `resume_stream` on a non-paused stream reverts
+  (`StreamNotPaused`).
+- Mutating a cancelled or depleted stream reverts (`StreamNotActive`).
 - Cancelling a `Depleted` stream reverts (`StreamNotActive`) — there is
   nothing left to split.
 - Cancelling a not-yet-started stream is a 100 % refund to the sender.
@@ -280,8 +305,8 @@ or off-chain UX.
 
 ## 10. Open problems / roadmap hooks
 
-- `pause_stream` (sender-initiated temporary hold) — needs a fourth status and
-  careful `cancel_amounts` treatment; drafted as a good-first-issue.
+- `pause_stream` (sender-initiated temporary hold) — implemented: pauses accrual
+  at frozen available balance, extends end_time by paused duration on resume.
 - Multi-token batch creation — one tx, N streams; watch the instruction
   budget, likely `try_create_batch` with per-item results.
 - Gas optimization pass on storage reads — `cancel_stream` does one

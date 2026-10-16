@@ -36,6 +36,8 @@ pub(crate) const TTL_EXTEND_LEDGERS: u32 = 500_000; // extend to ~29 days
 pub enum StreamStatus {
     /// Running; funds accrue and can be withdrawn or topped up.
     Active,
+    /// Paused; accrual frozen, withdrawals and top-ups still allowed.
+    Paused,
     /// Cancelled; remaining funds were split at cancellation. Terminal.
     Cancelled,
     /// Fully streamed and fully withdrawn. Terminal.
@@ -59,13 +61,21 @@ pub struct Stream {
     /// If true, the recipient may also cancel and reclaim their accrued balance.
     pub cancelable: bool,
     pub status: StreamStatus,
+    /// Cumulative seconds the stream has spent paused in past pause intervals.
+    pub paused_total: u64,
+    /// Timestamp when the stream was last resumed (0 if never paused/resumed).
+    pub last_resumed_at: u64,
+    /// Timestamp when the stream was last paused (0 if not currently paused).
+    pub last_paused_at: u64,
 }
 
 impl Stream {
-    /// Seconds in the stream's full window. Always `>= 1` for a stored stream
+    /// Seconds in the stream's full active window. Always `>= 1` for a stored stream
     /// (`create_stream` rejects `end_time <= start_time`).
     pub fn duration(&self) -> u64 {
-        self.end_time - self.start_time
+        self.end_time
+            .saturating_sub(self.start_time)
+            .saturating_sub(self.paused_total)
     }
 }
 
@@ -105,6 +115,7 @@ pub enum DataKey {
 ///
 /// The window is half-open `[start_time, end_time)`: at `now == start_time`
 /// nothing has accrued yet; at `now >= end_time` the full duration has elapsed.
+#[allow(dead_code)]
 pub fn elapsed_seconds(env: &Env, start_time: u64, end_time: u64) -> u64 {
     let now = env.ledger().timestamp();
     if now <= start_time {
@@ -155,11 +166,34 @@ pub fn streamed_at(deposit: i128, duration: u64, elapsed: u64) -> Result<i128, S
     Ok(streamed as i128)
 }
 
+/// Seconds elapsed of the active stream window at the current ledger time.
+///
+/// If the stream is currently [`StreamStatus::Paused`], accrual is frozen at
+/// the pause-time value (`last_paused_at`).
+/// When active, elapsed time excludes cumulative paused seconds:
+/// `elapsed = now - start_time - paused_total`.
+pub fn stream_elapsed_seconds(env: &Env, stream: &Stream) -> u64 {
+    let eval_time = if stream.status == StreamStatus::Paused {
+        stream.last_paused_at
+    } else {
+        env.ledger().timestamp()
+    };
+    if eval_time <= stream.start_time {
+        0
+    } else if eval_time >= stream.end_time {
+        stream.duration()
+    } else {
+        let raw = eval_time - stream.start_time;
+        raw.saturating_sub(stream.paused_total)
+            .min(stream.duration())
+    }
+}
+
 /// Amount streamed (accrued) at the current ledger time.
 ///
 /// See [`streamed_at`] for the rate semantics.
 pub fn streamed_amount(env: &Env, stream: &Stream) -> Result<i128, StreamError> {
-    let elapsed = elapsed_seconds(env, stream.start_time, stream.end_time);
+    let elapsed = stream_elapsed_seconds(env, stream);
     streamed_at(stream.deposit, stream.duration(), elapsed)
 }
 

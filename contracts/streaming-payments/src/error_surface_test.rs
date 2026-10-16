@@ -161,6 +161,44 @@ fn probe(branch: Branch) -> Option<StreamError> {
                 .mock_all_auths()
                 .try_top_up(&id, &i128::MAX)))
         }
+        // ------------------------------------------------------ pause_stream
+        Branch::PauseStreamAlreadyPaused => {
+            let f = Fixture::setup_quiet();
+            let id = f.create_stream(DEPOSIT, DAY, 10 * DAY, false);
+            f.client.mock_all_auths().pause_stream(&f.sender, &id);
+            Some(rejected!(f
+                .client
+                .mock_all_auths()
+                .try_pause_stream(&f.sender, &id)))
+        }
+        Branch::PauseStreamNotAuthorized => {
+            let f = Fixture::setup_quiet();
+            let id = f.create_stream(DEPOSIT, DAY, 10 * DAY, false);
+            let stranger = soroban_sdk::Address::generate(&f.env);
+            Some(rejected!(f
+                .client
+                .mock_all_auths()
+                .try_pause_stream(&stranger, &id)))
+        }
+        // ----------------------------------------------------- resume_stream
+        Branch::ResumeStreamNotPaused => {
+            let f = Fixture::setup_quiet();
+            let id = f.create_stream(DEPOSIT, DAY, 10 * DAY, false);
+            Some(rejected!(f
+                .client
+                .mock_all_auths()
+                .try_resume_stream(&f.sender, &id)))
+        }
+        Branch::ResumeStreamNotAuthorized => {
+            let f = Fixture::setup_quiet();
+            let id = f.create_stream(DEPOSIT, DAY, 10 * DAY, false);
+            f.client.mock_all_auths().pause_stream(&f.sender, &id);
+            let stranger = soroban_sdk::Address::generate(&f.env);
+            Some(rejected!(f
+                .client
+                .mock_all_auths()
+                .try_resume_stream(&stranger, &id)))
+        }
         // --------------------------------------------- shared storage / math
         Branch::StreamNotFound => {
             let f = Fixture::setup_quiet();
@@ -359,7 +397,9 @@ fn stream_error_variant_list_is_exhaustive() {
             | StreamError::FeeRateTooHigh
             | StreamError::NotGovernor
             | StreamError::NoPendingGovernor
-            | StreamError::InsufficientTreasuryBalance => StreamError::ALL.contains(&e),
+            | StreamError::InsufficientTreasuryBalance
+            | StreamError::StreamAlreadyPaused
+            | StreamError::StreamNotPaused => StreamError::ALL.contains(&e),
         }
     }
 

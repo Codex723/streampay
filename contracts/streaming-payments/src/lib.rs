@@ -57,7 +57,8 @@ use surface::Branch;
 
 pub use errors::StreamError;
 pub use events::{
-    FeeCharged, FeeWithdrawn, StreamCancelled, StreamCreated, StreamToppedUp, Withdrawn,
+    FeeCharged, FeeWithdrawn, PauseStream, ResumeStream, StreamCancelled, StreamCreated,
+    StreamToppedUp, Withdrawn,
 };
 // `streamed_at` is re-exported for the fuzz target and downstream rate
 // calculators: it is a pure function requiring no `Env`.
@@ -169,6 +170,9 @@ impl StreamingPayments {
             end_time,
             cancelable,
             status: StreamStatus::Active,
+            paused_total: 0,
+            last_resumed_at: 0,
+            last_paused_at: 0,
         };
         stream::put_stream(&env, &s);
         stream::index_stream(&env, &s);
@@ -251,7 +255,7 @@ impl StreamingPayments {
     fn authorize_withdrawal(env: &Env, stream_id: u64) -> Result<Stream, StreamError> {
         let s = stream::get_stream(env, stream_id)?;
         s.recipient.require_auth();
-        if s.status != StreamStatus::Active {
+        if s.status != StreamStatus::Active && s.status != StreamStatus::Paused {
             return Err(surface::reject(Branch::StreamNotActive));
         }
         Ok(s)
@@ -297,7 +301,7 @@ impl StreamingPayments {
         caller.require_auth();
 
         let mut s = stream::get_stream(&env, stream_id)?;
-        if s.status != StreamStatus::Active {
+        if s.status != StreamStatus::Active && s.status != StreamStatus::Paused {
             return Err(surface::reject(Branch::StreamNotActive));
         }
         if caller != s.sender {
@@ -374,7 +378,7 @@ impl StreamingPayments {
             return Err(surface::reject(Branch::TopUpAmountNonPositive));
         }
         let mut s = stream::get_stream(&env, stream_id)?;
-        if s.status != StreamStatus::Active {
+        if s.status != StreamStatus::Active && s.status != StreamStatus::Paused {
             return Err(surface::reject(Branch::StreamNotActive));
         }
         s.sender.require_auth();
@@ -404,6 +408,78 @@ impl StreamingPayments {
             new_deposit,
         }
         .publish(&env);
+
+        Ok(())
+    }
+
+    /// Temporarily pauses accrual for an active stream. Only the stream sender
+    /// may call this.
+    ///
+    /// Accrual is frozen at the available amount at pause time. Withdrawals
+    /// against the frozen balance and top-ups remain permitted. Reverts with
+    /// [`StreamError::StreamAlreadyPaused`] if the stream is already paused,
+    /// and with [`StreamError::StreamNotActive`] on cancelled or depleted streams.
+    pub fn pause_stream(env: Env, sender: Address, stream_id: u64) -> Result<(), StreamError> {
+        sender.require_auth();
+        let mut s = stream::get_stream(&env, stream_id)?;
+        if sender != s.sender {
+            return Err(surface::reject(Branch::PauseStreamNotAuthorized));
+        }
+        if s.status == StreamStatus::Paused {
+            return Err(surface::reject(Branch::PauseStreamAlreadyPaused));
+        }
+        if s.status != StreamStatus::Active {
+            return Err(surface::reject(Branch::StreamNotActive));
+        }
+
+        let now = env.ledger().timestamp();
+        s.status = StreamStatus::Paused;
+        s.last_paused_at = now;
+        stream::put_stream(&env, &s);
+
+        PauseStream { stream_id, sender }.publish(&env);
+
+        Ok(())
+    }
+
+    /// Resumes accrual for a paused stream from the exact point it was paused.
+    /// Only the stream sender may call this.
+    ///
+    /// The stream duration stretches by the exact duration it spent paused:
+    /// `end_time` shifts forward by the paused interval and `paused_total`
+    /// accumulates it, preserving pure accrual math. Reverts with
+    /// [`StreamError::StreamNotPaused`] if the stream is not currently paused,
+    /// and with [`StreamError::StreamNotActive`] on cancelled or depleted streams.
+    pub fn resume_stream(env: Env, sender: Address, stream_id: u64) -> Result<(), StreamError> {
+        sender.require_auth();
+        let mut s = stream::get_stream(&env, stream_id)?;
+        if sender != s.sender {
+            return Err(surface::reject(Branch::ResumeStreamNotAuthorized));
+        }
+        if s.status != StreamStatus::Active && s.status != StreamStatus::Paused {
+            return Err(surface::reject(Branch::StreamNotActive));
+        }
+        if s.status != StreamStatus::Paused {
+            return Err(surface::reject(Branch::ResumeStreamNotPaused));
+        }
+
+        let now = env.ledger().timestamp();
+        let pause_start = s.last_paused_at.max(s.start_time);
+        let paused_duration = now.saturating_sub(pause_start);
+
+        s.paused_total = s
+            .paused_total
+            .checked_add(paused_duration)
+            .ok_or(StreamError::MathOverflow)?;
+        s.end_time = s
+            .end_time
+            .checked_add(paused_duration)
+            .ok_or(StreamError::MathOverflow)?;
+        s.last_resumed_at = now;
+        s.status = StreamStatus::Active;
+        stream::put_stream(&env, &s);
+
+        ResumeStream { stream_id, sender }.publish(&env);
 
         Ok(())
     }
