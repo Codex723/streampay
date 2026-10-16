@@ -22,7 +22,7 @@ Every expected failure is a `StreamError` with a stable numeric code. This docum
 | 12 | `NotAuthorized` | reachable (3 branch(es)) | `cancel_stream`, `pause_stream`, `resume_stream` | the caller is neither the sender nor the recipient; the caller is not the stream sender; the caller is not the stream sender |
 | 13 | `NothingToWithdraw` | reachable (1 branch(es)) | `withdraw_max` | nothing has accrued yet, or everything accrued was already withdrawn |
 | 14 | `FeeRateTooHigh` | reachable (1 branch(es)) | `set_fee_bps` | new_fee_bps exceeds MAX_FEE_BPS (the protocol cap) |
-| 15 | `NotGovernor` | reachable (2 branch(es)) | `accept_governor`, `nominate_governor`, `set_fee_bps`, `withdraw_treasury` | the caller is not the treasury governor; the caller is not the nominated governor |
+| 15 | `NotGovernor` | reachable (2 branch(es)) | `accept_governor`, `cancel_upgrade`, `execute_upgrade`, `migrate_storage`, `nominate_governor`, `propose_upgrade`, `set_fee_bps`, `set_frozen`, `withdraw_treasury` | the caller is not the treasury governor; the caller is not the nominated governor |
 | 16 | `NoPendingGovernor` | reachable (1 branch(es)) | `accept_governor` | accept_governor with no nomination pending |
 | 17 | `InsufficientTreasuryBalance` | reachable (1 branch(es)) | `withdraw_treasury` | amount exceeds fees collected minus fees already withdrawn |
 | 18 | `StreamAlreadyPaused` | reachable (1 branch(es)) | `pause_stream` | the stream is already paused |
@@ -55,7 +55,7 @@ Every expected failure is a `StreamError` with a stable numeric code. This docum
 | `CancelSplitOverflow` | `cancel_stream` | `MathOverflow` | 11 | the cancel pro-rata split would underflow | defensive (unreachable) |
 | `PayoutOverflow` | `withdraw`, `withdraw_max` | `MathOverflow` | 11 | withdrawn + amount would overflow i128 | defensive (unreachable) |
 | `SetFeeRateTooHigh` | `set_fee_bps` | `FeeRateTooHigh` | 14 | new_fee_bps exceeds MAX_FEE_BPS (the protocol cap) | reachable |
-| `GovernorNotAllowed` | `set_fee_bps`, `nominate_governor`, `withdraw_treasury` | `NotGovernor` | 15 | the caller is not the treasury governor | reachable |
+| `GovernorNotAllowed` | `set_fee_bps`, `nominate_governor`, `withdraw_treasury`, `set_frozen`, `propose_upgrade`, `cancel_upgrade`, `execute_upgrade`, `migrate_storage` | `NotGovernor` | 15 | the caller is not the treasury governor | reachable |
 | `AcceptGovernorNoPending` | `accept_governor` | `NoPendingGovernor` | 16 | accept_governor with no nomination pending | reachable |
 | `AcceptGovernorNotNominee` | `accept_governor` | `NotGovernor` | 15 | the caller is not the nominated governor | reachable |
 | `WithdrawTreasuryAmountNonPositive` | `withdraw_treasury` | `ZeroAmount` | 9 | treasury withdrawal amount is zero or negative | reachable |
@@ -73,6 +73,18 @@ Every expected failure is a `StreamError` with a stable numeric code. This docum
 | `RecipientPayoutFailed` | `withdraw`, `withdraw_max`, `cancel_stream` | `RecipientPayoutFailed` | 28 | the token refuses a payout to the recipient | reachable |
 | `SenderRefundFailed` | `cancel_stream` | `SenderRefundFailed` | 29 | the token refuses the refund to the sender | reachable |
 | `TreasuryPayoutFailed` | `withdraw_treasury` | `TreasuryPayoutFailed` | 30 | the token refuses the payout of collected protocol fees | reachable |
+| `PolicyAssetNotAllowed` | `create_stream`, `create_streams` | `PolicyAssetNotAllowed` | 31 | the asset is not permitted by the policy module allowlist | reachable |
+| `PolicyTimelockNotElapsed` | `policy_execute_asset` | `PolicyTimelockNotElapsed` | 32 | the timelock delay has not elapsed for this queued policy change | reachable |
+| `PolicyNoQueuedChange` | `policy_execute_asset` | `PolicyNoQueuedChange` | 33 | no policy change is queued for the specified asset | reachable |
+| `PolicyNotInitialized` | `policy_execute_asset`, `policy_propose_asset`, `policy_propose_handoff`, `policy_accept_handoff`, `policy_cancel_handoff`, `policy_set_timelock_delay` | `PolicyNotInitialized` | 34 | the policy module has not been initialized | reachable |
+| `PolicyNoPendingHandoff` | `policy_accept_handoff`, `policy_cancel_handoff` | `PolicyNoPendingHandoff` | 35 | no admin handoff proposal is pending | reachable |
+| `ContractFrozen` | `create_stream`, `create_streams`, `withdraw`, `withdraw_max`, `cancel_stream`, `top_up` | `ContractFrozen` | 36 | the contract is frozen for maintenance or upgrade | reachable |
+| `MigrationNotFrozen` | `migrate_storage` | `ContractNotFrozen` | 37 | storage migration requires the contract to be frozen | reachable |
+| `ExecuteUpgradeNoPending` | `execute_upgrade` | `NoPendingUpgrade` | 38 | execute_upgrade called with no upgrade pending | reachable |
+| `CancelUpgradeNoPending` | `cancel_upgrade` | `NoPendingUpgrade` | 38 | cancel_upgrade called with no upgrade pending | reachable |
+| `TimelockNotExpired` | `execute_upgrade` | `TimelockNotExpired` | 39 | upgrade timelock delay has not yet expired | reachable |
+| `UpgradeDelayTooShort` | `propose_upgrade` | `UpgradeDelayTooShort` | 40 | proposed upgrade delay is shorter than MIN_UPGRADE_DELAY_SECONDS | reachable |
+| `AlreadyMigrated` | `migrate_storage` | `AlreadyMigrated` | 41 | storage has already been migrated to the target schema version | reachable |
 
 ## Retired codes
 
