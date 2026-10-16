@@ -56,11 +56,15 @@ pub enum Branch {
     // --------------------------------------------------------------- top_up
     TopUpAmountNonPositive,
     TopUpDepositOverflow,
-    // ---------------------------------------------------------- pause_stream
+    // --------------------------------------------------------- pause_stream
+    /// `pause_stream` on a stream that is already paused.
     PauseStreamAlreadyPaused,
+    /// `pause_stream` called by someone other than the stream sender.
     PauseStreamNotAuthorized,
-    // --------------------------------------------------------- resume_stream
+    // -------------------------------------------------------- resume_stream
+    /// `resume_stream` on a stream that is not paused.
     ResumeStreamNotPaused,
+    /// `resume_stream` called by someone other than the stream sender.
     ResumeStreamNotAuthorized,
     // ------------------------------------------------- shared storage/math
     /// `stream.rs::get_stream` finds no stored entry.
@@ -157,7 +161,7 @@ impl Branch {
     /// Every branch, in declaration order. The matrix test walks this list and
     /// the coverage test requires each [`StreamError`] variant to be produced by
     /// one of these (or retired).
-    pub const ALL: [Branch; 28] = [
+    pub const ALL: [Branch; 53] = [
         Branch::CreateDepositNonPositive,
         Branch::CreateStartTimeInPast,
         Branch::CreateInvalidTimeRange,
@@ -252,7 +256,7 @@ impl Branch {
                 "pause_stream",
                 "resume_stream",
             ],
-            Branch::CapacityOverflow => &["create_stream", "top_up"],
+            Branch::CapacityOverflow => &["create_stream", "create_streams", "top_up"],
             Branch::RateProductOverflow => &[
                 "streamed_at",
                 "available",
@@ -320,6 +324,8 @@ impl Branch {
                 "withdraw_max",
                 "cancel_stream",
                 "top_up",
+                "pause_stream",
+                "resume_stream",
             ],
             Branch::MigrationNotFrozen | Branch::AlreadyMigrated => &["migrate_storage"],
             Branch::ExecuteUpgradeNoPending | Branch::TimelockNotExpired => &["execute_upgrade"],
@@ -345,10 +351,10 @@ impl Branch {
             Branch::TopUpAmountNonPositive => StreamError::ZeroAmount,
             Branch::TopUpDepositOverflow => StreamError::MathOverflow,
             Branch::PauseStreamAlreadyPaused => StreamError::StreamAlreadyPaused,
+            Branch::ResumeStreamNotPaused => StreamError::StreamNotPaused,
             Branch::PauseStreamNotAuthorized | Branch::ResumeStreamNotAuthorized => {
                 StreamError::NotAuthorized
             }
-            Branch::ResumeStreamNotPaused => StreamError::StreamNotPaused,
             Branch::StreamNotFound => StreamError::StreamNotFound,
             Branch::StreamNotActive => StreamError::StreamNotActive,
             Branch::CapacityOverflow => StreamError::MathOverflow,

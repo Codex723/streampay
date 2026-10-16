@@ -4696,6 +4696,24 @@ fn freeze_and_unfreeze_governor_controls_and_mutation_gates() {
         .unwrap();
     assert_eq!(err, StreamError::ContractFrozen);
 
+    // 6. pause_stream
+    let err = f
+        .client
+        .mock_all_auths()
+        .try_pause_stream(&f.sender, &id)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, StreamError::ContractFrozen);
+
+    // 7. resume_stream
+    let err = f
+        .client
+        .mock_all_auths()
+        .try_resume_stream(&f.sender, &id)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, StreamError::ContractFrozen);
+
     // All read-only views remain completely functional while frozen:
     let s = f.client.get_stream(&id);
     assert_eq!(s.id, id);
@@ -4939,6 +4957,74 @@ fn storage_migration_lifecycle_and_invariants() {
         .unwrap_err()
         .unwrap();
     assert_eq!(err, StreamError::AlreadyMigrated);
+}
+
+#[test]
+fn storage_migration_cross_reads_pre_v3_stream_layout() {
+    let f = Fixture::setup();
+    let id = f.create_stream(DEPOSIT, DAY, 10 * DAY, false);
+
+    // Accrue and partially withdraw so the migrated entry carries non-trivial
+    // state (nonzero `withdrawn`, accrued balance still available).
+    f.advance_time(3 * DAY); // 2 of 10 days accrued
+    f.client.mock_all_auths().withdraw(&id, &(DEPOSIT / 10));
+    let before = f.client.mock_all_auths().get_stream(&id);
+    let available_before = f.client.available(&id);
+    assert!(available_before > 0);
+
+    // Rewrite the entry exactly as pre-pause Wasm stored it: `Stream` encodes
+    // positionally, so the pre-v3 10-field vector is a faithful simulation of
+    // data surviving an on-chain upgrade to this Wasm.
+    let legacy = crate::stream::StreamPreV3 {
+        id: before.id,
+        sender: before.sender.clone(),
+        recipient: before.recipient.clone(),
+        token: before.token.clone(),
+        deposit: before.deposit,
+        withdrawn: before.withdrawn,
+        start_time: before.start_time,
+        end_time: before.end_time,
+        cancelable: before.cancelable,
+        status: before.status,
+    };
+    let contract = f.client.address.clone();
+    f.env.as_contract(&contract, || {
+        f.env
+            .storage()
+            .persistent()
+            .set(&crate::stream::DataKey::Stream(id), &legacy);
+    });
+
+    // Freeze, migrate (cross-reads the legacy layout), and unfreeze.
+    f.client.mock_all_auths().set_frozen(&f.governor, &true);
+    let status = f
+        .client
+        .mock_all_auths()
+        .migrate_storage(&f.governor, &0, &50);
+    assert!(status.is_complete);
+    assert_eq!(status.current_version, TARGET_SCHEMA_VERSION);
+    assert_eq!(f.client.schema_version(), TARGET_SCHEMA_VERSION);
+    f.client.mock_all_auths().set_frozen(&f.governor, &false);
+
+    // The entry decodes under the current layout with every original field
+    // preserved and the pause fields defaulted to 0.
+    let after = f.client.mock_all_auths().get_stream(&id);
+    assert_eq!(after, before);
+    assert_eq!(after.paused_total, 0);
+    assert_eq!(after.last_resumed_at, 0);
+    assert_eq!(after.last_paused_at, 0);
+    assert_eq!(f.client.available(&id), available_before);
+
+    // The migrated entry is fully live: pause/resume works and accrual
+    // continues exactly where it left off.
+    f.client.mock_all_auths().pause_stream(&f.sender, &id);
+    f.advance_time(5 * DAY);
+    assert_eq!(f.client.available(&id), available_before);
+    f.client.mock_all_auths().resume_stream(&f.sender, &id);
+    let resumed = f.client.mock_all_auths().get_stream(&id);
+    assert_eq!(resumed.status, StreamStatus::Active);
+    assert_eq!(resumed.paused_total, 5 * DAY);
+    assert_eq!(resumed.end_time, before.end_time + 5 * DAY);
 }
 
 #[test]

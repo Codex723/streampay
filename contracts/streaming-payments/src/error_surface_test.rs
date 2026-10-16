@@ -699,6 +699,30 @@ fn stream_error_variant_list_is_exhaustive() {
             | StreamError::NotGovernor
             | StreamError::NoPendingGovernor
             | StreamError::InsufficientTreasuryBalance
+            | StreamError::IntentNotFound
+            | StreamError::IntentNotPending
+            | StreamError::IntentNotYetExecutable
+            | StreamError::IntentExpired
+            | StreamError::IntentNotCancellable
+            | StreamError::InvalidScheduleParameters
+            | StreamError::IntentParamsMismatch
+            | StreamError::IntentNotExpired
+            | StreamError::DepositTransferFailed
+            | StreamError::TopUpTransferFailed
+            | StreamError::RecipientPayoutFailed
+            | StreamError::SenderRefundFailed
+            | StreamError::TreasuryPayoutFailed
+            | StreamError::PolicyAssetNotAllowed
+            | StreamError::PolicyTimelockNotElapsed
+            | StreamError::PolicyNoQueuedChange
+            | StreamError::PolicyNotInitialized
+            | StreamError::PolicyNoPendingHandoff
+            | StreamError::ContractFrozen
+            | StreamError::ContractNotFrozen
+            | StreamError::NoPendingUpgrade
+            | StreamError::TimelockNotExpired
+            | StreamError::UpgradeDelayTooShort
+            | StreamError::AlreadyMigrated
             | StreamError::StreamAlreadyPaused
             | StreamError::StreamNotPaused => StreamError::ALL.contains(&e),
         }

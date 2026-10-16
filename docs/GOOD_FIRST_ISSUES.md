@@ -8,6 +8,10 @@ attach a GrantFox bounty. Claim by commenting and opening an early draft PR.
 > **#4** (fuzz math), **#7** (fetch by id — superseded by on-chain discovery), and
 > **#8** (testnet script + demo) have been implemented on `main`. They remain here
 > as reference for the expected format of new tickets; do not claim them.
+>
+> **Status (2026-10-16):** issue **#1** (`pause_stream` entrypoint) has been
+> implemented (`pause_stream` / `resume_stream`, `StreamStatus::Paused`,
+> codes 42/43, schema v3 migration). Do not claim it.
 
 ---
 
